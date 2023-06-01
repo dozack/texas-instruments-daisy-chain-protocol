@@ -4,7 +4,7 @@
 from saleae.analyzers import HighLevelAnalyzer, AnalyzerFrame, NumberSetting
 from saleae.data import GraphTimeDelta
 
-from binascii import hexlify
+import typing
 
 # High level analyzers must subclass the HighLevelAnalyzer class.
 
@@ -51,11 +51,11 @@ WAIT_CRC_2 = 0x06
 
 class Hla(HighLevelAnalyzer):
 
-    frame_timeout = NumberSetting(min_value=0, max_value=1000)
+    frame_timeout = NumberSetting(min_value=0.0)
 
     result_types = {
         'frame': {
-            'format': '{{data.frame_type}} - Type: {{data.command_type}}, Address: {{data.device_address}}, Register: {{data.register_address}}, Data: {{data.register_data}}'
+            'format': '{{data.message}}'
         },
         'error': {
             'format': 'Error - Reason: {{data.error_reason}}'
@@ -82,6 +82,7 @@ class Hla(HighLevelAnalyzer):
 
     def onReceived(self, frame: AnalyzerFrame) -> AnalyzerFrame:
         data: bytes = frame.data.get('data', None)
+        result: typing.Union[AnalyzerFrame, None] = None
 
         if data is None:
             return None
@@ -143,7 +144,7 @@ class Hla(HighLevelAnalyzer):
             Waiting for packet payload
             '''
             if self.currentState == WAIT_DATA:
-                self.lastPacketData += '0x{:02x} '.format(byte)
+                self.lastPacketData += '0x{:02X} '.format(byte)
                 self.lastPacketDataSize -= 1
                 if self.lastPacketDataSize <= 0:
                     self.currentState = WAIT_CRC_1
@@ -158,13 +159,28 @@ class Hla(HighLevelAnalyzer):
             if self.currentState == WAIT_CRC_2:
                 self.lastPacketChecksum = (self.lastPacketChecksum | byte)
                 self.currentState = WAIT_INIT
-                return AnalyzerFrame('frame', self.lastPacketTime, frame.end_time, {
-                    'frame_type': FRAME_TYPE_MAP[self.lastPacketType],
-                    'command_type': COMMAND_TYPE_MAP[(self.lastPacketCommandType & REQ_TYPE_MASK)],
-                    'device_address': hex(self.lastPacketDeviceAddress),
-                    'register_address': hex(self.lastPacketRegisterAddress),
-                    'register_data': self.lastPacketData
-                })
+                result = self.formatResult(frame)
+
+        return result
+
+    def formatResult(self, frame: AnalyzerFrame) -> AnalyzerFrame:
+        frameMessage: str = '{:s} - '.format(
+            FRAME_TYPE_MAP[self.lastPacketType])
+
+        if (self.lastPacketType == COMMAND_FRAME):
+            frameMessage += '{:s} '.format(
+                COMMAND_TYPE_MAP[self.lastPacketCommandType])
+
+        if ((self.lastPacketType == COMMAND_FRAME) and ((self.lastPacketCommandType == SINGLE_DEVICE_WRITE) or (self.lastPacketCommandType == SINGLE_DEVICE_READ))) or (self.lastPacketType == RESPONSE_FRAME):
+            frameMessage += 'Device: 0x{:04X} '.format(
+                self.lastPacketDeviceAddress)
+
+        frameMessage += 'Register: 0x{:04X} Data: {:s}'.format(
+            self.lastPacketRegisterAddress, self.lastPacketData)
+
+        return AnalyzerFrame('frame', self.lastPacketTime, frame.end_time, {
+            'message': frameMessage
+        })
 
     def decode(self, frame: AnalyzerFrame):
         '''
