@@ -2,7 +2,7 @@
   "name": "Texas Instruments Daisy Chain Protocol",
   "apiVersion": "1.0.0",
   "author": "Zoltan Dolensky",
-  "version": "0.2",
+  "version": "0.2.0",
   "description": "Isolated daisy chain protocol for BQ79600/BQ7961x/BQ7971x",
   "extensions": {
     "Texas Instruments Daisy Chain Protocol": {
