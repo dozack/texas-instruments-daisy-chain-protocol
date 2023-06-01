@@ -88,7 +88,7 @@ class Hla(HighLevelAnalyzer):
             return None
 
         if self.currentState != WAIT_INIT:
-            if self.lastPacketTime + GraphTimeDelta(0.01) < frame.end_time:
+            if self.lastPacketTime + GraphTimeDelta(float(self.frame_timeout)) < frame.end_time:
                 self.currentState = WAIT_INIT
                 return AnalyzerFrame('error_frame', self.lastPacketTime, frame.end_time, {
                     'error_reason': 'Transfer Timeout'
