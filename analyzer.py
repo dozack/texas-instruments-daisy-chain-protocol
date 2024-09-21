@@ -3,6 +3,7 @@
 
 from saleae.analyzers import HighLevelAnalyzer, AnalyzerFrame, NumberSetting
 from saleae.data import GraphTimeDelta
+from enum import Enum
 
 import typing
 
@@ -40,18 +41,20 @@ COMMAND_TYPE_MAP = {
     BROADCAST_WRITE_REVERSE: 'Broadcast Write Reverse',
 }
 
-WAIT_INIT = 0x00
-WAIT_DEV_ADDR = 0x01
-WAIT_REG_ADDR_1 = 0x02
-WAIT_REG_ADDR_2 = 0x03
-WAIT_DATA = 0x04
-WAIT_CRC_1 = 0x05
-WAIT_CRC_2 = 0x06
+
+class TransferState(Enum):
+    WAIT_INIT = 0
+    WAIT_DEV_ADDR = 1
+    WAIT_REG_ADDR_1 = 2
+    WAIT_REG_ADDR_2 = 3
+    WAIT_DATA = 4
+    WAIT_CRC_1 = 5
+    WAIT_CRC_2 = 6
 
 
-class Hla(HighLevelAnalyzer):
+class analyzer(HighLevelAnalyzer):
 
-    frame_timeout = NumberSetting(min_value=0.0)
+    frame_timeout = NumberSetting(label='Frame Timeout [s]', min_value=0)
 
     result_types = {
         'frame': {
@@ -68,7 +71,7 @@ class Hla(HighLevelAnalyzer):
 
         Settings can be accessed using the same name used above.
         '''
-        self.currentState = WAIT_INIT
+        self.currentState = TransferState.WAIT_INIT
 
     def initPacket(self):
         self.lastPacketType = 0
@@ -87,9 +90,9 @@ class Hla(HighLevelAnalyzer):
         if data is None:
             return None
 
-        if self.currentState != WAIT_INIT:
+        if self.currentState != TransferState.WAIT_INIT:
             if self.lastPacketTime + GraphTimeDelta(float(self.frame_timeout)) < frame.end_time:
-                self.currentState = WAIT_INIT
+                self.currentState = TransferState.WAIT_INIT
                 return AnalyzerFrame('error_frame', self.lastPacketTime, frame.end_time, {
                     'error_reason': 'Transfer Timeout'
                 })
@@ -98,7 +101,7 @@ class Hla(HighLevelAnalyzer):
             '''
             Waiting for packet header
             '''
-            if self.currentState == WAIT_INIT:
+            if self.currentState == TransferState.WAIT_INIT:
                 self.initPacket()
                 self.lastPacketTime = frame.start_time
                 # Check for frame type
@@ -110,9 +113,9 @@ class Hla(HighLevelAnalyzer):
                     self.lastPacketDataSize = (byte & REQ_DATA_SIZE_MASK) + 1
                     command = (byte & REQ_TYPE_MASK)
                     if command == SINGLE_DEVICE_READ or command == SINGLE_DEVICE_WRITE:
-                        self.currentState = WAIT_DEV_ADDR
+                        self.currentState = TransferState.WAIT_DEV_ADDR
                     else:
-                        self.currentState = WAIT_REG_ADDR_1
+                        self.currentState = TransferState.WAIT_REG_ADDR_1
                     self.lastPacketCommandType = command
                 else:
                     '''
@@ -120,45 +123,45 @@ class Hla(HighLevelAnalyzer):
                     '''
                     self.lastPacketType = RESPONSE_FRAME
                     self.lastPacketDataSize = (byte & RES_DATA_SIZE_MASK) + 1
-                    self.currentState = WAIT_DEV_ADDR
+                    self.currentState = TransferState.WAIT_DEV_ADDR
                 return None
             '''
             Waiting for device address
             '''
-            if self.currentState == WAIT_DEV_ADDR:
+            if self.currentState == TransferState.WAIT_DEV_ADDR:
                 self.lastPacketDeviceAddress = byte
-                self.currentState = WAIT_REG_ADDR_1
+                self.currentState = TransferState.WAIT_REG_ADDR_1
                 return None
             '''
             Waiting for target register address
             '''
-            if self.currentState == WAIT_REG_ADDR_1:
+            if self.currentState == TransferState.WAIT_REG_ADDR_1:
                 self.lastPacketRegisterAddress = byte << 8
-                self.currentState = WAIT_REG_ADDR_2
+                self.currentState = TransferState.WAIT_REG_ADDR_2
                 return None
-            if self.currentState == WAIT_REG_ADDR_2:
+            if self.currentState == TransferState.WAIT_REG_ADDR_2:
                 self.lastPacketRegisterAddress = self.lastPacketRegisterAddress | byte
-                self.currentState = WAIT_DATA
+                self.currentState = TransferState.WAIT_DATA
                 return None
             '''
             Waiting for packet payload
             '''
-            if self.currentState == WAIT_DATA:
+            if self.currentState == TransferState.WAIT_DATA:
                 self.lastPacketData += '0x{:02X} '.format(byte)
                 self.lastPacketDataSize -= 1
                 if self.lastPacketDataSize <= 0:
-                    self.currentState = WAIT_CRC_1
+                    self.currentState = TransferState.WAIT_CRC_1
                 return None
             '''
             Waiting for packet checkum
             '''
-            if self.currentState == WAIT_CRC_1:
+            if self.currentState == TransferState.WAIT_CRC_1:
                 self.lastPacketChecksum = (byte << 8)
-                self.currentState = WAIT_CRC_2
+                self.currentState = TransferState.WAIT_CRC_2
                 return None
-            if self.currentState == WAIT_CRC_2:
+            if self.currentState == TransferState.WAIT_CRC_2:
                 self.lastPacketChecksum = (self.lastPacketChecksum | byte)
-                self.currentState = WAIT_INIT
+                self.currentState = TransferState.WAIT_INIT
                 result = self.formatResult(frame)
 
         return result

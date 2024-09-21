@@ -7,7 +7,7 @@
   "extensions": {
     "Texas Instruments Daisy Chain Protocol": {
       "type": "HighLevelAnalyzer",
-      "entryPoint": "HighLevelAnalyzer.Hla"
+      "entryPoint": "analyzer.analyzer"
     }
   }
 }
